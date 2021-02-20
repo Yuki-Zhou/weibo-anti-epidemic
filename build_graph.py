@@ -4,6 +4,8 @@ import os
 import re
 import json
 
+from datetime import datetime
+
 import csv
 import networkx as nx
 
@@ -144,6 +146,8 @@ def add_forward_from_edge(graph:nx.classes.multidigraph.MultiDiGraph):
             graph.add_edge("Weibo%d"%Weibo2ID[index], "Account%d"%Account2ID[forward_from], type="ForwardedFrom")
     pass
 
+# style of the input time string: %Y/%m/%d %H:%M:%S
+# for example: 2020/09/16 16:34:59
 def build_graph(gexf_file, json_file, time_upper_bound=None, time_lower_bound=None):
 
     global Keyword2ID, Weibo2ID, Star2ID, Account2ID
@@ -169,7 +173,42 @@ def build_graph(gexf_file, json_file, time_upper_bound=None, time_lower_bound=No
     筛选时间段
     '''
     if time_lower_bound and time_upper_bound:
-        pass
+        time_lower_bound = datetime.strptime(time_lower_bound, "%Y/%m/%d %H:%M:%S")
+        time_upper_bound = datetime.strptime(time_upper_bound, "%Y/%m/%d %H:%M:%S")
+
+        # new folder
+        if not os.path.isdir("./tmp"):
+            os.mkdir("./tmp")
+
+        # filter weibo posts and write into new files
+        newWeiboFile = "./tmp/weibo.csv"
+        newWeiboAtFile = "./tmp/weibo_ats.json"
+        filtered_weibo_indexes = []
+
+        with open(WeiboFile, "r", encoding="utf-8") as inf, open(newWeiboFile, "w", encoding="utf-8") as outf:
+            line = inf.readline()
+            outf.write(line)
+            csv_reader = csv.reader(inf)
+            csv_writer = csv.writer(outf)
+            for line in csv_reader:
+                index = line[0]
+                try:
+                    t = datetime.strptime(line[3], "%Y/%m/%d %H:%M:%S")
+                except ValueError:
+                    t = datetime.strptime(line[3], "%Y-%m-%d %H:%M:%S")
+                if time_lower_bound <= t and t <= time_upper_bound:
+                    filtered_weibo_indexes.append(index)
+                    csv_writer.writerow(line)
+        
+        with open(WeiboAtFile, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+        filtered_weibo_indexes = set(filtered_weibo_indexes)
+        new_weibo_ats = {key: value for (key, value) in obj.items() if key in filtered_weibo_indexes}
+        with open(newWeiboAtFile, "w", encoding="utf-8") as f:
+            json.dump(new_weibo_ats, f, ensure_ascii=False)
+        
+        WeiboFile = newWeiboFile
+        WeiboAtFile = newWeiboAtFile
 
     '''
     建图
@@ -177,8 +216,8 @@ def build_graph(gexf_file, json_file, time_upper_bound=None, time_lower_bound=No
     # add nodes
     add_star_node(graph)
     add_account_node(graph)
-    add_weibo_node(graph)
     add_keyword_node(graph)
+    add_weibo_node(graph)
 
     # add edges
     add_star_account_edge(graph)
@@ -200,6 +239,10 @@ def build_graph(gexf_file, json_file, time_upper_bound=None, time_lower_bound=No
 if __name__ == "__main__":
     gexf_file = "./builds/thegraph.gexf"
     json_file = "./builds/tokens.json"
-    os.remove(gexf_file)
-    os.remove(json_file)
-    build_graph(gexf_file, json_file)
+    time_lower_bound = "2020/01/20 00:00:00"
+    time_upper_bound = "2020/09/17 00:00:00"
+    if os.path.exists(gexf_file):
+        os.remove(gexf_file)
+    if os.path.exists(json_file):
+        os.remove(json_file)
+    build_graph(gexf_file, json_file, time_lower_bound=time_lower_bound, time_upper_bound=time_upper_bound)

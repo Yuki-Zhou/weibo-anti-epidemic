@@ -3,3 +3,4 @@ utils.py
 .ipynb_checkpoints/
 test/
 .DS_Store
+tmp/
