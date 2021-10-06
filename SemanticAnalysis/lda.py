@@ -2,6 +2,7 @@ import json
 import re
 import os
 import csv
+from datetime import datetime
 
 import jieba
 import jieba.posseg as jp
@@ -84,8 +85,8 @@ class LDAModel(object):
         corpus = [dictionary.doc2bow(doc) for doc in docs]
         lda = models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary, num_topics=num_topics)
         
-        d = pyLDAvis.gensim_models.prepare(lda, corpus, dictionary)
-        pyLDAvis.show(d, local=False)
+        # d = pyLDAvis.gensim_models.prepare(lda, corpus, dictionary)
+        # pyLDAvis.show(d, local=False)
 
         # 打印每个类别最有关系的五个词汇
         for topic in lda.print_topics(num_words=10):
@@ -104,13 +105,46 @@ class LDAModel(object):
             with open(os.path.join(save_dir, "topic{}.txt".format(topic_id)), "a", encoding="utf-8") as f:
                 f.write("%s\t%s\n" % (document_keys[idx], documents[idx]))
 
-if __name__ == "__main__":
+def main(raw_weibo_file, save_weibo_file, stop_word_file, save_dir, time_upper_bound, time_lower_bound):
     new_stop_words = [" ", "微博", "王一博", "月", "日", "转发", "请", "http", "cn", "武汉", "疫情", "中国", "会", "2020", "wyb", "新型", "实时"]
     new_jieba_words = ["王一博", "王俊凯", "微博", "战疫"]
-    raw_weibo_file = "../data/weibo.csv"
-    save_weibo_file = "../result/weibo_text.json"
-    stop_word_file = "../data/stop_words.txt"
-    save_dir = "../result/lda"
 
-    LDA = LDAModel(raw_weibo_file, save_weibo_file, stop_word_file, new_stop_words, new_jieba_words)
+    '''
+        删选时段
+    '''
+    time_lower_bound = datetime.strptime(time_lower_bound, "%Y/%m/%d %H:%M:%S")
+    time_upper_bound = datetime.strptime(time_upper_bound, "%Y/%m/%d %H:%M:%S")
+    if not os.path.isdir("./tmp"):
+        os.mkdir("./tmp")
+    newWeiboFile = "./tmp/weibo.csv"
+    with open(raw_weibo_file, "r", encoding="utf-8") as inf, open(newWeiboFile, "w", encoding="utf-8", newline="") as outf:
+        line = inf.readline()
+        outf.write(line)
+        csv_reader = csv.reader(inf)
+        csv_writer = csv.writer(outf)
+        for line in csv_reader:
+            try:
+                t = datetime.strptime(line[3], "%Y/%m/%d %H:%M:%S")
+            except ValueError:
+                t = datetime.strptime(line[3], "%Y-%m-%d %H:%M:%S")
+            if time_lower_bound <= t and t <= time_upper_bound:
+                csv_writer.writerow(line)
+    
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
+
+    LDA = LDAModel(newWeiboFile, save_weibo_file, stop_word_file, new_stop_words, new_jieba_words)
     LDA.lda(save_dir=save_dir, num_topics=3)
+
+if __name__ == "__main__":
+    times = ["0120", "0220", "0317", "0428", "0918"]
+    stop_word_file = "../data/stop_words.txt"
+    raw_weibo_file = "../data/weibo.csv"
+    for i in range(len(times)):
+        for j in range(i + 1, len(times)):
+            print("ldaing for time zone [{}, {}]".format(times[i], times[j]))
+            time_lower_bound = "2020/{}/{} 00:00:00".format(times[i][:2], times[i][2:])
+            time_upper_bound = "2020/{}/{} 00:00:00".format(times[j][:2], times[j][2:])
+            save_weibo_file = "../result/weibo_text_from_{}_to_{}.json".format(times[i], times[j])
+            save_dir = "../result/lda_from_{}_to_{}".format(times[i], times[j])
+            main(raw_weibo_file, save_weibo_file, stop_word_file, save_dir, time_upper_bound, time_lower_bound)
